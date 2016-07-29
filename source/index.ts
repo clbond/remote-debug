@@ -7,7 +7,7 @@ import { ChromeConnection, ChromeDiscover } from './protocol';
 const discover = new ChromeDiscover();
 
 async function init() {
-  const endpoints = await discover.getEndpoints('localhost:9222');
+  const endpoints = await discover.getEndpoints('localhost:9222', {extensions: false});
 
   logger.debug('Received list of endpoints');
 
@@ -15,8 +15,10 @@ async function init() {
     const [id, endpoint] = ep;
 
     console.log(` > ${endpoint.title}`);
-    console.log(`   | id ${id}`);
-    console.log(`   | browser uri ${endpoint.browserUri}`)
+    console.log(`   id          ${id}`);
+    console.log(`   browser uri ${endpoint.browserUri}`);
+    console.log(`   control uri ${endpoint.debuggerUri}`);
+    console.log();
   }
 
   const connection = new ChromeConnection();

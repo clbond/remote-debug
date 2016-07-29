@@ -2,11 +2,16 @@ import 'isomorphic-fetch';
 
 import { logger } from '../../logger';
 
-import { Discover } from '../discover';
+import {
+  defaultOptions,
+  Discover,
+  DiscoverOptions,
+} from '../discover';
+
 import { Endpoint } from '../endpoint';
 
 export class ChromeDiscover implements Discover {
-  async getEndpoints(targetUri: string): Promise<Map<string, Endpoint>> {
+  async getEndpoints(targetUri: string, options: DiscoverOptions = defaultOptions) {
     try {
       const endpoints = await fetch(`http://${targetUri}/json`).then(r => r.json());
 
@@ -23,7 +28,13 @@ export class ChromeDiscover implements Discover {
 
       const map = new Map<string, Endpoint>();
 
-      for (const e of endpoints.map(toEndpoint)) {
+      let results = endpoints.map(toEndpoint);
+
+      if (options.extensions === false) {
+        results = results.filter(r => (/chrome-extension:/.test(r.browserUri) === false));
+      }
+
+      for (const e of results) {
         map.set(e.id, e);
       }
 

@@ -1,9 +1,9 @@
-import { createConnection, Socket } from 'net';
+import WebSocket from 'ws';
 
 import { Subject, Observable } from 'rxjs';
 
 import { ConnectionState } from './connection-state';
-
+import { Endpoint } from './endpoint'
 import { logger } from '../logger';
 
 export interface StateTransition {
@@ -14,7 +14,7 @@ export interface StateTransition {
 export class Connection {
   protected state = ConnectionState.Idle;
 
-  protected socket: Socket;
+  protected socket: WebSocket;
 
   protected stateStream = new Subject<StateTransition>();
 
@@ -29,11 +29,13 @@ export class Connection {
     return this.stateStream;
   }
 
-  public connect(host: string, port: number): Promise<void> {
+  public connect(endpoint: Endpoint): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      logger.debug(`Connecting to ${host}:${port}`);
+      logger.debug(`Connecting to ${endpoint.debuggerUri}`);
 
-      this.socket = createConnection(port, host, () => {
+      this.socket = new WebSocket(endpoint.debuggerUri);
+
+      this.socket.on('open', () => {
         this.transition(ConnectionState.Connected);
 
         resolve();
@@ -51,19 +53,13 @@ export class Connection {
         }
       });
 
-      this.socket.on('data', (buffer: Buffer) => {
+      this.socket.on('message', (buffer: Buffer) => {
         logger.debug(`Received packet of ${buffer.length} bytes`);
 
         this.packetStream.next(buffer);
       });
 
-      this.socket.on('close', (failure: boolean) => {
-        if (failure) {
-          this.transition(ConnectionState.Failed);
-        }
-
-        this.close();
-      });
+      this.socket.on('close', () => this.close());
     });
   }
 
@@ -92,20 +88,19 @@ export class Connection {
     return oldState;
   }
 
-  public send(content: string): Promise<void> {
+  public send<T>(content: T): Promise<void> {
     console.log('Send: ', content);
 
-    return new Promise<void>(resolve => {
-      this.socket.write(content, 'utf8', resolve);
+    return new Promise<void>((resolve, reject) => {
+      this.socket.send(content, error => {
+        if (error) {
+          reject(error);
+        }
+        else {
+          resolve();
+        }
+      });
     });
-  }
-
-  public get(path: string, headers) {
-    const request = [
-      `GET ${path} HTTP/1.1`,
-    ].concat(Object.keys(headers).map(h => `${h}: ${headers[h]}`))
-
-    this.send(request.join('\r\n') + '\r\n\r\n');
   }
 
   public close = () => {
@@ -115,14 +110,14 @@ export class Connection {
 
     switch (this.state) {
       case ConnectionState.Idle:
-      case ConnectionState.Failed:
+      case ConnectionState.Failed: // do not transition from failed state on close
         break;
       default:
         this.transition(ConnectionState.Idle);
         break;
     }
 
-    this.socket.destroy();
+    this.socket.close();
     this.socket = null;
   }
 }

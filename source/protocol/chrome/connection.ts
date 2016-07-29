@@ -1,17 +1,12 @@
-import { createConnection, Socket } from 'net';
-import { Transform } from 'stream';
 import { Subject, Observable } from 'rxjs';
 
 import { logger } from '../../logger';
 import { Connection } from '../connection';
 import { ConnectionState } from '../connection-state';
-import { HttpParser } from '../http/parser';
 
 export type Message = any;
 
 export class ChromeConnection extends Connection {
-  protected transform: Transform;
-
   protected messageStream = new Subject<Message>();
 
   public get messages(): Observable<Message> {
@@ -21,25 +16,9 @@ export class ChromeConnection extends Connection {
   constructor() {
     super();
 
-    const httpParser = new HttpParser();
-
     this.packets.subscribe(packet => {
-      httpParser.write(packet,
-        transformed => {
-          const {code, headers, content} = transformed;
-
-          if (code !== 200) {
-            this.transition(ConnectionState.Failed);
-          }
-          else {
-            this.messageStream.next(transformed);
-          }
-        });
+      logger.debug('Received packet', packet);
     });
-  }
-
-  protected receive(packet: Buffer) {
-    console.log('Receive', packet);
   }
 }
 

@@ -1,29 +1,41 @@
+import 'babel-polyfill';
+
 import { logger } from './logger';
 
-import { ChromeConnection } from './protocol';
+import { ChromeConnection, ChromeDiscover } from './protocol';
 
-const connection = new ChromeConnection();
+const discover = new ChromeDiscover();
 
-const promise = connection.connect('jsonplaceholder.typicode.com', 80);
+async function init() {
+  const endpoints = await discover.getEndpoints('localhost:9222');
 
-promise.then(() => {
-  logger.info('Connected!');
+  logger.debug('Received list of endpoints');
 
-  connection.get('/posts/1', {
-    'Content-Length': '0',
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'Host': 'jsonplaceholder.typicode.com',
-    'Pragma': 'no-cache',
-    'Referer': 'http://jsonplaceholder.typicode.com/'
+  for (const ep of endpoints) {
+    const [id, endpoint] = ep;
+
+    console.log(` > ${endpoint.title}`);
+    console.log(`   | id ${id}`);
+    console.log(`   | browser uri ${endpoint.browserUri}`)
+  }
+
+  const connection = new ChromeConnection();
+
+  const promise = connection.connect(endpoints[0]);
+
+  promise.then(() => {
+    logger.info('Connected!');
   });
-});
 
-promise.catch(error => {
-  logger.error(`Failed to connect: ${error}`);
-});
+  promise.catch(error => {
+    logger.error(`Failed to connect: ${error}`);
+  });
 
-connection.messages.subscribe(m => {
-  console.log('Got message', m);
+  connection.messages.subscribe(m => {
+    console.log('Got message', m);
+  });
+};
+
+init().catch(error => {
+  logger.error(`Failed to load remote debugger: ${error.stack}`);
 });

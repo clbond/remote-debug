@@ -1,7 +1,5 @@
 import 'babel-polyfill';
 
-import 'ts-helpers';
-
 const context = (<{ context?(path: string, recurse: boolean, match: RegExp) }>require)
   .context('./', true, /^(.(?!tests\.entry))*\.ts$/);
 

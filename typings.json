@@ -1,6 +1,7 @@
 {
   "globalDependencies": {
     "isomorphic-fetch": "registry:dt/isomorphic-fetch#0.0.0+20160524142046",
+    "md5": "registry:dt/md5#2.1.0+20160521153251",
     "node": "registry:dt/node#6.0.0+20160728152422",
     "winston": "registry:dt/winston#0.0.0+20160417152829",
     "ws": "registry:dt/ws#0.0.0+20160724122153"

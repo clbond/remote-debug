@@ -4,10 +4,10 @@ import { logger } from './logger';
 
 import { ChromeConnection, ChromeDiscover } from './protocol';
 
-const discover = new ChromeDiscover();
+async function locate() {
+  const discover = new ChromeDiscover();
 
-async function init() {
-  const endpoints = await discover.getEndpoints('localhost:9222', {extensions: false});
+  const endpoints = await discover.getEndpoints('localhost:9222', { extensions: false });
 
   logger.debug('Received list of endpoints');
 
@@ -21,23 +21,40 @@ async function init() {
     console.log();
   }
 
+  return endpoints;
+}
+
+async function connect(id: string) {
+  const discovered = await locate();
+
+  if (discovered.has(id) === false) {
+    throw new Error(`Browser instance ID does not exist: ${id}`);
+  }
+
   const connection = new ChromeConnection();
 
-  const promise = connection.connect(endpoints[0]);
+  const promise = connection.connect(discovered.get(id));
 
   promise.then(() => {
-    logger.info('Connected!');
+    logger.info('Connected');
   });
 
   promise.catch(error => {
     logger.error(`Failed to connect: ${error}`);
   });
 
-  connection.messages.subscribe(m => {
+  connection.messages().subscribe(m => {
     console.log('Got message', m);
   });
-};
+}
 
-init().catch(error => {
-  logger.error(`Failed to load remote debugger: ${error.stack}`);
-});
+if (process.argv.length < 3) {
+  locate().catch(error => {
+    logger.error(`Failed to discover debuggable instances: ${error.stack}`);
+  });
+}
+else {
+  connect(process.argv[2]).catch(error => {
+    logger.error(`Failed to connect remote debugger: ${error.stack}`);
+  });
+}

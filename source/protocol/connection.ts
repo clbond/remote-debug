@@ -1,6 +1,14 @@
-import WebSocket from 'ws';
+import WebSocket = require('ws');
 
-import { Subject, Observable } from 'rxjs';
+import md5 = require('md5');
+
+import { randomBytes } from 'crypto';
+
+import {
+  Subject,
+  ConnectableObservable,
+  Observable
+} from 'rxjs';
 
 import { ConnectionState } from './connection-state';
 import { Endpoint } from './endpoint'
@@ -11,21 +19,39 @@ export interface StateTransition {
   newState: ConnectionState;
 }
 
-export class Connection {
+export interface Message<T> {
+  id: number;
+  method?: string;
+  params?: T;
+  error?: {
+    code: number;
+    message: string;
+  };
+}
+
+export interface ResponseHandler {
+  <T>(response: Message<T>): void;
+}
+
+export abstract class Connection {
   protected state = ConnectionState.Idle;
 
-  protected socket: WebSocket;
+  private socket: WebSocket;
 
-  protected stateStream = new Subject<StateTransition>();
+  private stateStream = new Subject<StateTransition>();
 
-  protected packetStream = new Subject<Buffer>();
+  private packetStream = new Subject<Message<any>>();
 
-  protected get packets(): Observable<Buffer> {
+  private pending = new Map<number, ResponseHandler>();
+
+  public abstract messages(): Observable<Message<any>>;
+
+  public packets(): Observable<Message<any>> {
     return this.packetStream;
   }
 
   /// Get a stream of state transition events
-  public get stateTransition(): Observable<StateTransition> {
+  public stateTransition(): Observable<StateTransition> {
     return this.stateStream;
   }
 
@@ -53,14 +79,38 @@ export class Connection {
         }
       });
 
-      this.socket.on('message', (buffer: Buffer) => {
-        logger.debug(`Received packet of ${buffer.length} bytes`);
+      this.socket.on('message', (msg: string) => {
+        try {
+          const json = JSON.parse(msg);
+          const {id} = json;
 
-        this.packetStream.next(buffer);
+          // Either this is a response to a message we already sent, or it is a new
+          // message entirely. The way we handle it depends on which case this message
+          // fits into. If it is a response, we will already have a handler waiting for
+          // it; otherwise we bubble it up via messageStream.
+          if (this.pending.has(id)) {
+            this.pending.get(id)(json);
+            this.pending.delete(id);
+          }
+          else {
+            this.packetStream.next(json);
+          }
+        }
+        catch (err) {
+          this.fail(err.stack);
+        }
       });
 
       this.socket.on('close', () => this.close());
     });
+  }
+
+  protected fail(message: string) {
+    logger.error(`Closing connection due to error: ${message}`);
+
+    this.transition(ConnectionState.Failed);
+
+    this.close();
   }
 
   protected transition(newState: ConnectionState): ConnectionState {
@@ -88,16 +138,27 @@ export class Connection {
     return oldState;
   }
 
-  public send<T>(content: T): Promise<void> {
-    console.log('Send: ', content);
+  private static nextIdentifier = 0;
 
-    return new Promise<void>((resolve, reject) => {
-      this.socket.send(content, error => {
+  public send<TResponse, TRequest>(method: string, params: TRequest = null) {
+
+    logger.debug(`Send: ${method} (${JSON.stringify(params)})`);
+
+    return new Promise<Message<TResponse>>((resolve, reject) => {
+      const id = Connection.nextIdentifier++;
+
+      const msg = JSON.stringify({
+        id,
+        method,
+        params,
+      });
+
+      this.socket.send(msg, error => {
         if (error) {
           reject(error);
         }
         else {
-          resolve();
+          this.pending.set(id, response => resolve(response));
         }
       });
     });

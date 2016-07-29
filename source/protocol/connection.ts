@@ -11,6 +11,7 @@ import {
 } from 'rxjs';
 
 import { ConnectionState } from './connection-state';
+import { Debugger } from './debugger';
 import { Endpoint } from './endpoint'
 import { logger } from '../logger';
 
@@ -46,6 +47,8 @@ export abstract class Connection {
 
   public abstract messages(): Observable<Message<any>>;
 
+  protected abstract start(): Promise<Debugger>;
+
   public packets(): Observable<Message<any>> {
     return this.packetStream;
   }
@@ -55,8 +58,8 @@ export abstract class Connection {
     return this.stateStream;
   }
 
-  public connect(endpoint: Endpoint): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+  public connect(endpoint: Endpoint): Promise<Debugger> {
+    return new Promise<Debugger>((resolve, reject) => {
       logger.debug(`Connecting to ${endpoint.debuggerUri}`);
 
       this.socket = new WebSocket(endpoint.debuggerUri);
@@ -64,7 +67,8 @@ export abstract class Connection {
       this.socket.on('open', () => {
         this.transition(ConnectionState.Connected);
 
-        resolve();
+        // Put the device into a debugging state and provide a Debugger instance to our caller
+        this.start().then(controller => resolve(controller));
       });
 
       this.socket.on('error', error => {

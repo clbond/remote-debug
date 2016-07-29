@@ -35,8 +35,12 @@ async function connect(id: string) {
 
   const promise = connection.connect(discovered.get(id));
 
-  promise.then(() => {
+  promise.then(controller => {
     logger.info('Connected');
+
+    controller.consoleMessages.subscribe(msg => {
+      logger.info('Remote console message', msg);
+    })
   });
 
   promise.catch(error => {
@@ -44,7 +48,7 @@ async function connect(id: string) {
   });
 
   connection.messages().subscribe(m => {
-    console.log('Got message', m);
+    //console.log('Got message', m);
   });
 }
 

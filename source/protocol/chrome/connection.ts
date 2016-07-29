@@ -3,6 +3,7 @@ import { Subject, Observable } from 'rxjs';
 import { logger } from '../../logger';
 import { Connection, Message } from '../connection';
 import { ConnectionState } from '../connection-state';
+import { Debugger } from '../debugger';
 
 export type Message = any;
 
@@ -15,16 +16,6 @@ export class ChromeConnection extends Connection {
 
   constructor() {
     super();
-
-    this.stateTransition().subscribe(transition => {
-      switch (transition.newState) {
-        case ConnectionState.Connected:
-          this.start();
-          break;
-        default:
-          break;
-      }
-    });
 
     this.packets().subscribe(message => {
       if (message.error != null) {
@@ -39,12 +30,47 @@ export class ChromeConnection extends Connection {
     })
   }
 
-  protected start() {
+  protected start(): Promise<Debugger> {
+    const controller = this.getDebugger();
+
     const all = Promise.all([
       this.send<any, any>('Debugger.enable'),
       this.send<any, any>('Console.enable')
     ]);
 
-    all.then(() => this.transition(ConnectionState.Debugging));
+    return all.then(() => {
+      this.transition(ConnectionState.Debugging);
+
+      return controller;
+    });
+  }
+
+  protected getDebugger() {
+    const connection = this;
+
+    const Class = class ChromeDebugger extends Debugger {
+      constructor() {
+        super();
+
+        connection.messages().subscribe(m => {
+          switch (m.method) {
+            case 'Console.messageAdded':
+              const {message} = m.params;
+
+              this.consoleStream.next({
+                text: message.text,
+                url: message.url,
+                sourcePosition: [message.line, message.column],
+                timestamp: new Date(message.timestamp),
+              });
+              break;
+            default:
+              break;
+          }
+        });
+      }
+    }
+
+    return new Class();
   }
 }
